@@ -4,7 +4,7 @@ export default {
    ** Headers of the page
    */
   head: {
-    title: process.env.npm_package_name || '',
+    title: 'Wildfire commenting engine',
     meta: [
       { charset: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
@@ -23,7 +23,7 @@ export default {
   /*
    ** Global CSS
    */
-  css: [],
+  css: ['~assets/app.scss'],
   /*
    ** Plugins to load before mounting the App
    */
@@ -61,7 +61,15 @@ export default {
     /*
      ** You can extend webpack config here
      */
-    // extend(config, ctx) {}
+    extend(config) {
+      config.module.rules.push({
+        test: /\.md$/,
+        loader: 'raw-loader',
+        options: {
+          esModule: false
+        }
+      })
+    }
   },
   serverMiddleware: [{ path: '/api/metadata', handler: '~/api/metadata.js' }]
 }

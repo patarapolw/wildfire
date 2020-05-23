@@ -59,18 +59,13 @@ export default class WebLayout extends Vue {
       to: '/'
     },
     {
-      title: 'Installation',
-      icon: 'settings',
-      to: '/installation'
-    },
-    {
       title: 'Guide',
       icon: 'help',
       to: '/guide'
     },
     {
       title: 'GitHub',
-      icon: 'github-circle',
+      icon: 'github',
       url: 'https://github.com/patarapolw/wildfire'
     }
   ]
@@ -79,7 +74,7 @@ export default class WebLayout extends Vue {
     return (
       '/comment?' +
       qs.stringify({
-        path: process.env.baseUrl + this.$route.path
+        url: process.env.BASE_URL + this.$route.path
       })
     )
   }

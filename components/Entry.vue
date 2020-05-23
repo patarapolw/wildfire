@@ -11,12 +11,12 @@ section
           MarkdownEditor.reply-editor(v-model="value" @ready="$emit('render')")
       small
         span(v-if="entry.id")
-          span(:key="likeKey")
+          span
             a(role="button" @click="toggleLike" v-if="isYours(entry)")
-              | {{like['thumb-up'] && like['thumb-up'].includes(user.email) ? 'Unlike' : 'Like'}}
-            span(v-if="like['thumb-up'] && like['thumb-up'].length > 0")
+              | {{entry.like['thumb-up'].includes(user.email) ? 'Unlike' : 'Like'}}
+            span(v-if="entry.like['thumb-up'].length > 0")
               b-icon(icon="thumb-up-outline" size="is-small" style="margin-left: 0.5rem;")
-              span {{like['thumb-up'].length}}
+              span {{entry.like['thumb-up'].length}}
             span(v-if="user || like['thumb-up']") {{' · '}}
           span(v-if="user")
             a(role="button" @click="doReply") Reply
@@ -74,7 +74,7 @@ export default class Entry extends Vue {
   }
 
   get user() {
-    return this.$fireAuth.currentUser
+    return this.$store.state.user
   }
 
   get replyPath() {
@@ -102,7 +102,9 @@ export default class Entry extends Vue {
 
   isYours(entry: IEntry) {
     return (
-      this.user && this.user.email && this.user.email === entry.createdBy.email
+      this.user &&
+      this.user.email &&
+      this.user.email === (entry.createdBy || {}).email
     )
   }
 

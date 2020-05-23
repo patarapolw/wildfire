@@ -21,12 +21,12 @@ import 'codemirror/addon/fold/indent-fold.js'
 import 'codemirror/addon/fold/comment-fold.js'
 import 'codemirror/addon/fold/markdown-fold.js'
 import 'codemirror/addon/fold/foldgutter.css'
-import 'codemirror/theme/monokai.css'
+// import 'codemirror/theme/monokai.css'
 
 Vue.use(VueCodemirror, {
   options: {
-    theme: 'monokai',
-    lineNumbers: true,
+    // theme: 'monokai',
+    // lineNumbers: true,
     autoCloseBrackets: true,
     gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
     lineWrapping: true,
@@ -40,9 +40,6 @@ Vue.use(VueCodemirror, {
       }
     },
     foldGutter: true,
-    mode: {
-      name: 'yaml-frontmatter',
-      base: 'markdown'
-    }
+    mode: 'markdown'
   }
 })

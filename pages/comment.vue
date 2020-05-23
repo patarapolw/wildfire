@@ -1,7 +1,7 @@
 <template lang="pug">
 .container(style="margin-bottom: 50px;")
   MainEditor(@post="onPost" @render="onRender")
-  Entry(v-for="it in entries" :key="it.id" :entry="it" reply-from="_root"
+  Entry(v-for="it in entries" :key="it.id" :entry="it" :reply-from="fs.rootId"
     @render="onRender" @delete="onDelete(it.id)")
 </template>
 
@@ -48,10 +48,16 @@ export default class Comment extends Vue {
     return new FirestoreOp(this)
   }
 
-  created() {
+  async created() {
+    this.$fireAuth.onAuthStateChanged((user) => {
+      this.$store.commit('setUser', user)
+    })
+
     if (this.root) {
       this.root.style.maxWidth = '90vw'
     }
+    await this.fs.getRoot()
+
     this.fetchEntries()
   }
 
@@ -65,7 +71,7 @@ export default class Comment extends Vue {
   }
 
   async fetchEntries() {
-    const r = await this.fs.read('_root', this.entries)
+    const r = await this.fs.read(this.fs.rootId, this.entries)
     this.$set(this, 'entries', r.data)
     this.count = r.parent.replyCount
 
@@ -95,7 +101,7 @@ export default class Comment extends Vue {
   }
 
   async onDelete(id: string) {
-    await this.fs.delete(id, '_root')
+    await this.fs.delete(id, this.fs.rootId)
     await this.fetchEntries()
   }
 }

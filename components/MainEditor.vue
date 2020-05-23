@@ -1,13 +1,14 @@
 <template lang="pug">
 article.media
-  figure.media-left(style="text-align: center;")
+  figure.media-left(style="text-align: center; position: relative;")
+    .popup(ref="login" v-show="isLoggingIn")
     p.image.avatar(style="margin-top: 1rem;")
-      b-tooltip(v-if="user" :label="'Logged in as ' + user.nickname + '. Click to logout'" position="is-right")
+      b-tooltip(v-if="user" :label="'Logged in as ' + (user.displayName || 'Anonymous') + '. Click to logout'" position="is-right")
         img.is-rounded.cursor-pointer(:src="getGravatarUrl(user.email)" :alt="user.given_name"
           @click="doLogout" role="button")
       b-tooltip(v-else label="Click to login" position="is-right")
         img.is-rounded.cursor-pointer(:src="getGravatarUrl()"
-          @click="doLogin" role="button")
+          @click="isLoggingIn = true" role="button")
   .media-content
     .toggleable-editor-main
       client-only(v-if="user")
@@ -20,10 +21,12 @@ article.media
 </template>
 
 <script lang="ts">
-import { Vue, Component, Emit } from 'nuxt-property-decorator'
+import { Vue, Component, Emit, Watch } from 'nuxt-property-decorator'
 import { FirestoreOp } from '../assets/schema'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { getGravatarUrl } from '@/assets/util'
+
+import 'firebaseui/dist/firebaseui.css'
 
 @Component({
   components: {
@@ -33,22 +36,62 @@ import { getGravatarUrl } from '@/assets/util'
 export default class MainEditor extends Vue {
   currentValue = ''
   getGravatarUrl = getGravatarUrl
+  isLoggingIn = false
+  authUI: any = null
 
   get fs() {
     return new FirestoreOp(this)
   }
 
   get user() {
-    return this.$fireAuth.currentUser
+    return this.$store.state.user
   }
 
-  doLogin() {
-    open('/login', '_blank')
-    // this.$fireAuth.signInWithPopup()
+  @Watch('isLoggingIn')
+  async doLogin() {
+    if (process.client) {
+      const { login } = this.$refs as any
+      const { auth } = await import('firebaseui')
+      this.authUI =
+        this.authUI ||
+        auth.AuthUI.getInstance() ||
+        new auth.AuthUI(this.$fireAuth)
+      this.authUI.start(login, {
+        signInFlow: 'popup',
+        signInOptions: [
+          // Leave the lines as is for the providers you want to offer your users.
+          this.$fireAuthObj.GoogleAuthProvider.PROVIDER_ID,
+          // this.$fireAuthObj.FacebookAuthProvider.PROVIDER_ID,
+          // this.$fireAuthObj.TwitterAuthProvider.PROVIDER_ID,
+          this.$fireAuthObj.GithubAuthProvider.PROVIDER_ID,
+          this.$fireAuthObj.EmailAuthProvider.PROVIDER_ID,
+          // this.$fireAuthObj.PhoneAuthProvider.PROVIDER_ID,
+          auth.AnonymousAuthProvider.PROVIDER_ID
+        ],
+        callbacks: {
+          signInSuccessWithAuthResult: () => {
+            this.$store.commit('setUser', this.$fireAuth.currentUser)
+            this.isLoggingIn = false
+            return true
+          }
+        }
+      })
+
+      const onClickOutside = (evt: any) => {
+        const { login } = this.$refs as any
+        if (login && !login.contains(evt.target)) {
+          this.isLoggingIn = false
+        }
+        this.$el.removeEventListener('click', onClickOutside)
+      }
+
+      this.$el.addEventListener('click', onClickOutside)
+    }
   }
 
-  doLogout() {
-    this.$fireAuth.signOut()
+  async doLogout() {
+    await this.$fireAuth.signOut()
+    this.$store.commit('setUser', null)
   }
 
   @Emit('post')
@@ -56,7 +99,7 @@ export default class MainEditor extends Vue {
     await this.fs.create({
       content: this.currentValue,
       createdAt: new Date().toISOString(),
-      replyTo: '_root',
+      replyTo: this.fs.rootId,
       replyCount: 0,
       like: {
         'thumb-up': []
@@ -68,21 +111,27 @@ export default class MainEditor extends Vue {
 }
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
 .preview {
   background-color: #fcf2d4;
 }
 
 .toggleable-editor-main {
   margin: 10px;
-  height: 200px;
-
-  @media screen and (max-width: 600px) {
-    height: 300px;
-  }
+  // height: 150px;
 }
 
 .cursor-pointer {
   cursor: pointer;
+}
+
+.popup {
+  position: absolute;
+  background-color: white;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+  z-index: 100;
+  left: 50%;
+  top: 1em;
+  width: 250px;
 }
 </style>
