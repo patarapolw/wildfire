@@ -4,7 +4,7 @@ client-only
 </template>
 
 <script lang="ts">
-import { Vue, Component, Prop, Emit } from 'nuxt-property-decorator'
+import { Vue, Component, Prop, Emit, Watch } from 'nuxt-property-decorator'
 import { Editor } from 'codemirror'
 
 @Component
@@ -19,6 +19,10 @@ export default class MarkdownEditor extends Vue {
     }
 
     return null
+  }
+
+  created() {
+    this.modelVal = this.value
   }
 
   mounted() {
@@ -54,6 +58,15 @@ export default class MarkdownEditor extends Vue {
   @Emit('input')
   onCmCodeChange() {
     return this.modelVal
+  }
+
+  @Watch('value')
+  onValueChange() {
+    this.$nextTick(() => {
+      if (this.codemirror) {
+        this.codemirror.setValue(this.value)
+      }
+    })
   }
 }
 </script>

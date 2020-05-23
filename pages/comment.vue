@@ -1,7 +1,7 @@
 <template lang="pug">
 .container(style="margin-bottom: 50px;")
   MainEditor(@post="onPost" @render="onRender")
-  Entry(v-for="it in entries" :key="it.id" :entry="it" :reply-from="fs.rootId"
+  Entry(v-for="it in entries" :key="it.id" :entry="it" :reply-from="fs.root.id" :depth="0"
     @render="onRender" @delete="onDelete(it.id)")
 </template>
 
@@ -9,7 +9,7 @@
 import { Vue, Component } from 'nuxt-property-decorator'
 import MainEditor from '@/components/MainEditor.vue'
 import Entry from '@/components/Entry.vue'
-import { FirestoreOp, IEntry } from '@/assets/schema'
+import { FirestoreOp, IEntry, g } from '@/assets/schema'
 
 @Component({
   components: {
@@ -45,10 +45,13 @@ export default class Comment extends Vue {
   }
 
   get fs() {
-    return new FirestoreOp(this)
+    return g.fs as FirestoreOp
   }
 
   async created() {
+    g.fs = new FirestoreOp(this)
+    await g.fs.getRoot()
+
     this.$fireAuth.onAuthStateChanged((user) => {
       this.$store.commit('setUser', user)
     })
@@ -71,7 +74,7 @@ export default class Comment extends Vue {
   }
 
   async fetchEntries() {
-    const r = await this.fs.read(this.fs.rootId, this.entries)
+    const r = await this.fs.read((await this.fs.getRoot()).id, this.entries)
     this.$set(this, 'entries', r.data)
     this.count = r.parent.replyCount
 
@@ -101,7 +104,7 @@ export default class Comment extends Vue {
   }
 
   async onDelete(id: string) {
-    await this.fs.delete(id, this.fs.rootId)
+    await this.fs.delete(id, (await this.fs.getRoot()).id)
     await this.fetchEntries()
   }
 }

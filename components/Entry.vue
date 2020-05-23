@@ -10,43 +10,44 @@ section
         client-only(v-else)
           MarkdownEditor.reply-editor(v-model="value" @ready="$emit('render')")
       small
-        span(v-if="entry.id")
-          span
-            a(role="button" @click="toggleLike" v-if="isYours(entry)")
-              | {{entry.like['thumb-up'].includes(user.email) ? 'Unlike' : 'Like'}}
-            span(v-if="entry.like['thumb-up'].length > 0")
-              b-icon(icon="thumb-up-outline" size="is-small" style="margin-left: 0.5rem;")
-              span {{entry.like['thumb-up'].length}}
-            span(v-if="user || like['thumb-up']") {{' · '}}
-          span(v-if="user")
-            a(role="button" @click="doReply") Reply
-            span {{' · '}}
-        span(v-if="isYours(entry)")
+        span(v-if="entry && entry.id")
+          a(role="button" @click="toggleLike" v-if="isYours(entry)")
+            | {{entry.like['thumb-up'].includes(user.email) ? 'Unlike' : 'Like'}}
+          span(v-if="entry.like['thumb-up'].length > 0")
+            b-icon(icon="thumb-up-outline" size="is-small" style="margin-left: 0.5rem;")
+            span {{entry.like['thumb-up'].length}}
+          span(v-if="user || entry.like['thumb-up']") {{' · '}}
+        span(v-if="user")
+          a(role="button" @click="doReply") Reply
+          span {{' · '}}
+        span(v-if="entry && isYours(entry)")
           a(role="button" @click="toggleEdit") {{modelIsEdit ? 'Post' : 'Edit'}}
           span {{' · '}}
-        span(v-if="isYours(entry)")
+        span(v-if="entry && isYours(entry)")
           a(role="button" @click="doDelete") Delete
           span {{' · '}}
-        span Posted by {{nickname(entry) || 'Anonymous'}}
-        span {{' · '}}
-        span {{ pastDuration }} ago
-      section(v-if="replyDepth < 3")
-        Entry(v-if="hasReply" :replyFrom="replyPath" is-edit
-          @delete="hasReply = false" @render="$emit('render')" @post="onPost")
-        Entry(v-for="it in subcomments" :key="it.id" :replyFrom="replyPath"
-            :entry="it" @render="$emit('render')" @delete="onDelete(it.id)")
-  section(v-if="replyDepth >= 3")
-    Entry(v-if="hasReply" :replyFrom="replyPath" is-edit
-        @delete="hasReply = false" @render="$emit('render')" @post="onPost")
-    Entry(v-for="it in subcomments" :key="it.id" :replyFrom="replyPath"
-        :entry="it" @render="$emit('render')" @delete="onDelete(it.id)")
+        span(v-if="entry")
+          span Posted by {{nickname(entry) || 'Anonymous'}}
+          span {{' · '}}
+          span {{ pastDuration }} ago
+      section(v-if="entry && depth < 3")
+        Entry(v-if="hasReply" :reply-from="entry.id" :is-edit="true"
+          @delete="hasReply = false" @render="$emit('render')" @post="onPost" :depth="depth + 1")
+        Entry(v-for="it in subcomments" :key="it.id" :reply-from="entry.id"
+            :entry="it" @render="$emit('render')" @delete="onDelete(it.id)" :depth="depth + 1")
+  section(v-if="entry && depth >= 3")
+    Entry(v-if="hasReply" :reply-from="entry.id" :is-edit="true"
+        @delete="hasReply = false" @render="$emit('render')" @post="onPost" :depth="depth + 1")
+    Entry(v-for="it in subcomments" :key="it.id" :reply-from="entry.id"
+        :entry="it" @render="$emit('render')" @delete="onDelete(it.id)" :depth="depth + 1")
 </template>
 
 <script lang="ts">
 import { Vue, Component, Prop } from 'nuxt-property-decorator'
 import humanizeDuration from 'humanize-duration'
+import { User } from 'firebase/app'
 import { MakeHtml } from '../assets/make-html'
-import { FirestoreOp, IEntry } from '../assets/schema'
+import { FirestoreOp, IEntry, g } from '../assets/schema'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { getGravatarUrl } from '@/assets/util'
 
@@ -56,46 +57,43 @@ import { getGravatarUrl } from '@/assets/util'
   }
 })
 export default class Entry extends Vue {
-  @Prop({ required: true }) entry!: IEntry & { id: string }
+  @Prop() entry?: IEntry & { id: string }
   @Prop({ default: false }) isEdit!: boolean
   @Prop({ required: true }) replyFrom!: string
+  @Prop({ required: true }) depth!: number
 
   makehtml: MakeHtml | null = null
   modelIsEdit = this.isEdit
   hasReply = false
-  value = this.entry.content || ''
+  value = this.entry ? this.entry.content : ''
   subcomments: (IEntry & { id: string })[] = []
   hasMore = false
   getGravatarUrl = getGravatarUrl
   html = ''
 
   get fs() {
-    return new FirestoreOp(this)
+    return g.fs as FirestoreOp
   }
 
   get user() {
-    return this.$store.state.user
-  }
-
-  get replyPath() {
-    const id = this.entry.id || ''
-    return this.replyFrom ? `${this.replyFrom}/${id}` : id
-  }
-
-  get replyDepth() {
-    return this.replyPath.split('/').length
+    return this.$store.state.user as User
   }
 
   get pastDuration() {
-    return humanizeDuration(+new Date() - +new Date(this.entry.createdAt), {
-      round: true,
-      largest: 2
-    })
+    return this.entry
+      ? humanizeDuration(+new Date() - +new Date(this.entry.createdAt), {
+          round: true,
+          largest: 2
+        })
+      : ''
   }
 
   created() {
-    this.makehtml = new MakeHtml(this.entry.id || `reply-${this.replyFrom}`)
-    if (this.entry.id) {
+    this.makehtml = new MakeHtml(
+      this.entry ? this.entry.id : `reply-${this.replyFrom}`
+    )
+    this.getHtml()
+    if (this.entry) {
       this.fetchSubcomments()
     }
   }
@@ -110,7 +108,7 @@ export default class Entry extends Vue {
 
   nickname(entry: IEntry) {
     const user = entry.createdBy
-    return user.displayName || 'Anonymous'
+    return (user ? user.displayName : null) || 'Anonymous'
   }
 
   async getHtml() {
@@ -121,7 +119,7 @@ export default class Entry extends Vue {
   }
 
   async toggleLike() {
-    if (!this.fs.user.email) {
+    if (!this.entry || !this.fs.user.email) {
       return
     }
 
@@ -142,7 +140,7 @@ export default class Entry extends Vue {
   }
 
   async toggleEdit() {
-    if (this.modelIsEdit) {
+    if (this.entry && this.modelIsEdit) {
       await this.fs.update(this.entry.id, { content: this.value })
       await this.getHtml()
     }
@@ -151,16 +149,25 @@ export default class Entry extends Vue {
   }
 
   async doDelete() {
+    if (!this.entry) {
+      return
+    }
+
     await this.fs.delete(this.entry.id, this.replyFrom)
     this.$emit('delete')
   }
 
   async fetchSubcomments() {
-    const r = await this.fs.read(this.replyPath, this.subcomments)
+    if (!this.entry) {
+      return
+    }
+
+    const r = await this.fs.read(this.entry.id, this.subcomments)
+
     this.subcomments = r.data
     this.entry = {
       ...r.parent,
-      id: this.replyPath
+      id: this.entry.id
     }
 
     if (this.subcomments.length < this.entry.replyCount) {
@@ -190,10 +197,5 @@ export default class Entry extends Vue {
 <style lang="scss">
 .reply-editor {
   margin: 10px;
-  height: 200px;
-
-  @media screen and (max-width: 600px) {
-    height: 300px;
-  }
 }
 </style>

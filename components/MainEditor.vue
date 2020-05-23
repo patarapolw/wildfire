@@ -22,7 +22,7 @@ article.media
 
 <script lang="ts">
 import { Vue, Component, Emit, Watch } from 'nuxt-property-decorator'
-import { FirestoreOp } from '../assets/schema'
+import { FirestoreOp, g } from '../assets/schema'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { getGravatarUrl } from '@/assets/util'
 
@@ -40,7 +40,7 @@ export default class MainEditor extends Vue {
   authUI: any = null
 
   get fs() {
-    return new FirestoreOp(this)
+    return g.fs as FirestoreOp
   }
 
   get user() {
@@ -99,7 +99,7 @@ export default class MainEditor extends Vue {
     await this.fs.create({
       content: this.currentValue,
       createdAt: new Date().toISOString(),
-      replyTo: this.fs.rootId,
+      replyTo: (await this.fs.getRoot()).id,
       replyCount: 0,
       like: {
         'thumb-up': []
