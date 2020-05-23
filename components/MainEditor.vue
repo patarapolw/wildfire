@@ -20,7 +20,8 @@ article.media
 </template>
 
 <script lang="ts">
-import { Vue, Component } from 'nuxt-property-decorator'
+import { Vue, Component, Emit } from 'nuxt-property-decorator'
+import { FirestoreOp } from '../assets/schema'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { getGravatarUrl } from '@/assets/util'
 
@@ -33,6 +34,14 @@ export default class MainEditor extends Vue {
   currentValue = ''
   getGravatarUrl = getGravatarUrl
 
+  get fs() {
+    return new FirestoreOp(this)
+  }
+
+  get user() {
+    return this.$fireAuth.currentUser
+  }
+
   doLogin() {
     open('/login', '_blank')
     // this.$fireAuth.signInWithPopup()
@@ -42,12 +51,19 @@ export default class MainEditor extends Vue {
     this.$fireAuth.signOut()
   }
 
+  @Emit('post')
   async doPost() {
-    await this.$fireStore.collection('wildfire').add({
-      content: this.currentValue
+    await this.fs.create({
+      content: this.currentValue,
+      createdAt: new Date().toISOString(),
+      replyTo: '_root',
+      replyCount: 0,
+      like: {
+        'thumb-up': []
+      }
     })
+
     this.currentValue = ''
-    this.$emit('post')
   }
 }
 </script>

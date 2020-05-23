@@ -1,7 +1,7 @@
 <template lang="pug">
 .container(style="margin-bottom: 50px;")
   MainEditor(@post="onPost" @render="onRender")
-  Entry(v-for="it in entries" :key="it.id" :entry="it"
+  Entry(v-for="it in entries" :key="it.id" :entry="it" reply-from="_root"
     @render="onRender" @delete="onDelete(it.id)")
 </template>
 
@@ -9,6 +9,7 @@
 import { Vue, Component } from 'nuxt-property-decorator'
 import MainEditor from '@/components/MainEditor.vue'
 import Entry from '@/components/Entry.vue'
+import { FirestoreOp, IEntry } from '@/assets/schema'
 
 @Component({
   components: {
@@ -35,12 +36,16 @@ import Entry from '@/components/Entry.vue'
   }
 })
 export default class Comment extends Vue {
-  stat: any = {}
-  entries: any[] = []
+  count = 0
+  entries: (IEntry & { id: string })[] = []
   hasMore = false
 
   get root() {
     return process.client ? (frameElement as HTMLIFrameElement) : null
+  }
+
+  get fs() {
+    return new FirestoreOp(this)
   }
 
   created() {
@@ -59,36 +64,22 @@ export default class Comment extends Vue {
     }
   }
 
-  async fetchEntries({ reset }: any = {}) {
-    if (process.client) {
-      let result = null
-      let c = this.$fireStore.collection('wildfire').where('replyTo', '==', '')
+  async fetchEntries() {
+    const r = await this.fs.read('_root', this.entries)
+    this.$set(this, 'entries', r.data)
+    this.count = r.parent.replyCount
 
-      if (!reset) {
-        c = c.startAfter(this.entries[this.entries.length - 1].id)
-      }
-      const r = await c.get()
-      result = r.docs.map((d) => d.data())
-
-      this.entries = reset ? result : [...this.entries, ...result]
-      this.$set(this, 'entries', this.entries)
-
-      this.stat = await this.$fireStore
-        .collection('wildfire')
-        .doc('_stat')
-        .get()
-
-      if (this.entries.length < this.stat.count) {
-        this.hasMore = true
-      } else {
-        this.hasMore = false
-      }
-      this.setHeight()
+    if (this.entries.length < this.count) {
+      this.hasMore = true
+    } else {
+      this.hasMore = false
     }
+    this.setHeight()
   }
 
   async onPost() {
-    await this.fetchEntries({ reset: true })
+    this.entries = []
+    await this.fetchEntries()
   }
 
   onRender() {
@@ -103,13 +94,9 @@ export default class Comment extends Vue {
     })
   }
 
-  onDelete(id: string) {
-    this.$set(
-      this,
-      'entries',
-      this.entries.filter((el) => el.id !== id)
-    )
-    this.setHeight()
+  async onDelete(id: string) {
+    await this.fs.delete(id, '_root')
+    await this.fetchEntries()
   }
 }
 </script>

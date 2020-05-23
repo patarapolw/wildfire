@@ -12,33 +12,33 @@ section
       small
         span(v-if="entry.id")
           span(:key="likeKey")
-            a(role="button" @click="toggleLike" v-if="isAuthorized")
+            a(role="button" @click="toggleLike" v-if="isYours(entry)")
               | {{like['thumb-up'] && like['thumb-up'].includes(user.email) ? 'Unlike' : 'Like'}}
             span(v-if="like['thumb-up'] && like['thumb-up'].length > 0")
               b-icon(icon="thumb-up-outline" size="is-small" style="margin-left: 0.5rem;")
               span {{like['thumb-up'].length}}
-            span(v-if="isAuthorized || like['thumb-up']") {{' · '}}
-          span(v-if="isAuthorized")
+            span(v-if="user || like['thumb-up']") {{' · '}}
+          span(v-if="user")
             a(role="button" @click="doReply") Reply
             span {{' · '}}
-        span(v-if="isAuthorized && isYou")
+        span(v-if="isYours(entry)")
           a(role="button" @click="toggleEdit") {{modelIsEdit ? 'Post' : 'Edit'}}
           span {{' · '}}
-        span(v-if="isAuthorized && isYou")
+        span(v-if="isYours(entry)")
           a(role="button" @click="doDelete") Delete
           span {{' · '}}
-        span Posted by {{user.nickname}}
+        span Posted by {{nickname(entry) || 'Anonymous'}}
         span {{' · '}}
         span {{ pastDuration }} ago
       section(v-if="replyDepth < 3")
-        Entry(v-if="hasReply" :reply-to="replyPath" is-edit
+        Entry(v-if="hasReply" :replyFrom="replyPath" is-edit
           @delete="hasReply = false" @render="$emit('render')" @post="onPost")
-        Entry(v-for="it in subcomments" :key="it.id" :reply-to="replyPath"
+        Entry(v-for="it in subcomments" :key="it.id" :replyFrom="replyPath"
             :entry="it" @render="$emit('render')" @delete="onDelete(it.id)")
   section(v-if="replyDepth >= 3")
-    Entry(v-if="hasReply" :reply-to="replyPath" is-edit
+    Entry(v-if="hasReply" :replyFrom="replyPath" is-edit
         @delete="hasReply = false" @render="$emit('render')" @post="onPost")
-    Entry(v-for="it in subcomments" :key="it.id" :reply-to="replyPath"
+    Entry(v-for="it in subcomments" :key="it.id" :replyFrom="replyPath"
         :entry="it" @render="$emit('render')" @delete="onDelete(it.id)")
 </template>
 
@@ -46,6 +46,7 @@ section
 import { Vue, Component, Prop } from 'nuxt-property-decorator'
 import humanizeDuration from 'humanize-duration'
 import { MakeHtml } from '../assets/make-html'
+import { FirestoreOp, IEntry } from '../assets/schema'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { getGravatarUrl } from '@/assets/util'
 
@@ -55,24 +56,30 @@ import { getGravatarUrl } from '@/assets/util'
   }
 })
 export default class Entry extends Vue {
-  @Prop({ default: () => ({}) }) entry!: any
+  @Prop({ required: true }) entry!: IEntry & { id: string }
   @Prop({ default: false }) isEdit!: boolean
-  @Prop({ default: '' }) replyTo!: string
+  @Prop({ required: true }) replyFrom!: string
 
-  like = this.entry.like || {}
   makehtml: MakeHtml | null = null
   modelIsEdit = this.isEdit
   hasReply = false
   value = this.entry.content || ''
-  subcomments: any[] = []
+  subcomments: (IEntry & { id: string })[] = []
   hasMore = false
-  likeKey = JSON.stringify(this.like['thumb-up'])
   getGravatarUrl = getGravatarUrl
   html = ''
 
+  get fs() {
+    return new FirestoreOp(this)
+  }
+
+  get user() {
+    return this.$fireAuth.currentUser
+  }
+
   get replyPath() {
     const id = this.entry.id || ''
-    return this.replyTo ? `${this.replyTo}/${id}` : id
+    return this.replyFrom ? `${this.replyFrom}/${id}` : id
   }
 
   get replyDepth() {
@@ -86,21 +93,22 @@ export default class Entry extends Vue {
     })
   }
 
-  get user() {
-    return (
-      (this.entry.user
-        ? this.entry.user
-        : this.replyTo
-        ? this.$fireAuth.currentUser
-        : null) || {}
-    )
-  }
-
   created() {
-    this.makehtml = new MakeHtml(this.entry.id || `reply-${this.replyTo}`)
+    this.makehtml = new MakeHtml(this.entry.id || `reply-${this.replyFrom}`)
     if (this.entry.id) {
       this.fetchSubcomments()
     }
+  }
+
+  isYours(entry: IEntry) {
+    return (
+      this.user && this.user.email && this.user.email === entry.createdBy.email
+    )
+  }
+
+  nickname(entry: IEntry) {
+    const user = entry.createdBy
+    return user.displayName || 'Anonymous'
   }
 
   async getHtml() {
@@ -111,29 +119,19 @@ export default class Entry extends Vue {
   }
 
   async toggleLike() {
-    if (this.entry.id) {
-      if (
-        this.like['thumb-up'] &&
-        this.like['thumb-up'].includes(this.user.email)
-      ) {
-        this.like['thumb-up'] = this.like['thumb-up'].filter(
-          (el: any) => el !== this.user.email
-        )
-        await this.$fireStore
-          .collection('wildfire')
-          .doc(this.entry.id)
-          .update({ like: this.like })
-      } else {
-        this.like['thumb-up'] = this.like['thumb-up'] || []
-        this.like['thumb-up'].push(this.user.email)
-        await this.$fireStore
-          .collection('wildfire')
-          .doc(this.entry.id)
-          .update({ like: this.like })
-      }
-      this.$set(this.like, 'thumb-up', this.like['thumb-up'])
-      this.likeKey = JSON.stringify(this.like['thumb-up'])
+    if (!this.fs.user.email) {
+      return
     }
+
+    if (this.entry.like['thumb-up'].includes(this.fs.user.email)) {
+      this.entry.like['thumb-up'] = this.entry.like['thumb-up'].filter(
+        (el: any) => el !== this.fs.user.email
+      )
+    } else {
+      this.entry.like['thumb-up'].push(this.fs.user.email)
+    }
+    await this.fs.update(this.entry.id, { like: this.entry.like })
+    this.$set(this.entry, 'like', this.entry.like)
   }
 
   doReply() {
@@ -143,23 +141,7 @@ export default class Entry extends Vue {
 
   async toggleEdit() {
     if (this.modelIsEdit) {
-      if (this.entry.id) {
-        await this.$fireStore
-          .collection('wildfire')
-          .doc(this.entry.id)
-          .update({ content: this.value })
-      } else {
-        await this.$fireStore
-          .collection('wildfire')
-          .doc(this.replyTo)
-          .update({ content: this.value })
-        this.$emit('post')
-        this.$emit('delete')
-        this.$emit('render')
-        return
-      }
-    }
-    if (this.modelIsEdit) {
+      await this.fs.update(this.entry.id, { content: this.value })
       await this.getHtml()
     }
 
@@ -167,50 +149,29 @@ export default class Entry extends Vue {
   }
 
   async doDelete() {
-    if (this.entry.id) {
-      await this.$fireStore
-        .collection('wildfire')
-        .doc(this.entry.id)
-        .delete()
-    }
+    await this.fs.delete(this.entry.id, this.replyFrom)
     this.$emit('delete')
   }
 
-  async fetchSubcomments({ reset }: { reset?: boolean } = {}) {
-    if (process.client) {
-      let result = null
-      try {
-        const r = await this.$fireStore
-          .collection('wildfire')
-          .where('replyTo', '==', this.replyPath)
-          .startAfter(
-            reset ? 0 : this.subcomments[this.subcomments.length - 1].replyTo
-          )
-          .get()
-
-        result = r.docs.map((d) => {
-          const data = d.data()
-          data.id = d.id
-          return data
-        })
-      } catch (e) {
-        return
-      }
-      this.subcomments = reset ? result : [...this.subcomments, ...result]
-      this.$set(this, 'subcomments', this.subcomments)
-
-      if (this.subcomments.length < this.entry.replyCount) {
-        this.hasMore = true
-      } else {
-        this.hasMore = false
-      }
-      this.$emit('render')
+  async fetchSubcomments() {
+    const r = await this.fs.read(this.replyPath, this.subcomments)
+    this.subcomments = r.data
+    this.entry = {
+      ...r.parent,
+      id: this.replyPath
     }
+
+    if (this.subcomments.length < this.entry.replyCount) {
+      this.hasMore = true
+    } else {
+      this.hasMore = false
+    }
+    this.$emit('render')
   }
 
   async onPost() {
     this.$set(this, 'subcomments', [])
-    await this.fetchSubcomments({ reset: true })
+    await this.fetchSubcomments()
   }
 
   onDelete(id: string) {
