@@ -17,7 +17,7 @@
     "@nuxtjs/firebase": "^5.2.0",
     "axios": "^0.19.2",
     "codemirror": "^5.54.0",
-    "dayjs": "^1.8.27",
+    "dayjs": "^1.8.29",
     "domino": "^2.1.5",
     "firebase": "^7.14.5",
     "firebaseui": "^4.5.0",
